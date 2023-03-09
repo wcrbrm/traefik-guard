@@ -1,4 +1,5 @@
 use super::proto::*;
+use super::tags::TagMap;
 use anyhow::{anyhow, bail, Context};
 use std::collections::BTreeMap as Map;
 use std::fs;
@@ -13,6 +14,12 @@ service
  - deletes rule for the given group
  - reacts on visitor
 */
+
+#[derive(Debug, Clone)]
+pub enum RuleRef {
+    Index(usize),
+    Tag(TagMap),
+}
 
 // service structure as a state with map of security groups
 #[derive(Debug, Clone)]
@@ -57,7 +64,7 @@ impl SecurityGroupService {
 
             match SecurityGroup::from_file(&basename, &full_file_name) {
                 Ok(group) => {
-                    info!("Loaded group {}, {} rules", basename, group.list.len());
+                    // info!("Loaded group {}, {} rules", basename, group.list.len());
                     groups.insert(basename, group);
                 }
                 Err(e) => {
@@ -80,7 +87,7 @@ impl SecurityGroupService {
         for (name, group) in &self.groups {
             let file_name = format!("{}/{}.rules.txt", self.storage_path, name);
             match group.save_to_file(&file_name) {
-                Ok(_) => info!("Saved group {} to {}", name, file_name),
+                Ok(_) => {} // info!("Saved group {} to {}", name, file_name),
                 Err(e) => warn!("Failed to save group {} to {}: {}", name, file_name, e),
             }
         }
@@ -101,27 +108,34 @@ impl SecurityGroupService {
     // function to create rule for a given group, returns index of the rule
     #[instrument(skip(self))]
     pub fn create_rule(&mut self, group_name: &str, rule: &str) -> anyhow::Result<usize> {
+        // get or create group
         let group = self
             .groups
-            .get_mut(group_name)
-            .ok_or_else(|| anyhow!("group {} not found", group_name))?;
+            .entry(group_name.to_string())
+            .or_insert_with(|| SecurityGroup {
+                name: group_name.to_string(),
+                list: Vec::new(),
+            });
         group.list.push(Rule::parse(rule)?);
         let index = group.list.len() - 1;
         self.save();
         Ok(index)
     }
 
-    // function to get rule by its index for a given group, returns Rule
+    // function to list all rules for a given group
     #[instrument(skip(self))]
-    pub fn get_rule(&self, group_name: &str, index: usize) -> anyhow::Result<Rule> {
+    pub fn list_rules(&self, group_name: &str, tags: &TagMap) -> anyhow::Result<Vec<String>> {
         let group = self
             .groups
             .get(group_name)
-            .ok_or_else(|| anyhow!("group {} not found", group_name))?;
-        if index >= group.list.len() {
-            bail!("index {} out of range", index);
-        }
-        Ok(group.list[index].clone())
+            .ok_or_else(|| anyhow::anyhow!("group {} not found", group_name))?;
+
+        Ok(group
+            .list
+            .iter()
+            .map(|r| Some(r.to_string()))
+            .flatten()
+            .collect())
     }
 
     // function to update rule by its index for a given group
@@ -129,44 +143,64 @@ impl SecurityGroupService {
     pub fn update_rule(
         &mut self,
         group_name: &str,
-        index: usize,
+        rule_ref: &RuleRef,
         input: &str,
     ) -> anyhow::Result<()> {
         let group = self
             .groups
             .get_mut(group_name)
             .ok_or_else(|| anyhow!("group {} not found", group_name))?;
-        if index >= group.list.len() {
-            bail!("index {} out of range", index);
+        match rule_ref {
+            RuleRef::Index(index) => {
+                if *index >= group.list.len() {
+                    bail!("index {} out of range", index);
+                }
+                group.list[*index] = Rule::parse(input)?;
+            }
+            RuleRef::Tag(tag) => {
+                let mut found = false;
+                for rule in &mut group.list {
+                    if tag.matches(&rule.tags) {
+                        *rule = Rule::parse(input)?;
+                        found = true;
+                    }
+                }
+                if !found {
+                    bail!("rule with tag {:?} not found", tag);
+                }
+            }
         }
-        group.list[index] = Rule::parse(input)?;
         self.save();
         Ok(())
     }
 
     // function to delete rule by its index for a given group
     #[instrument(skip(self))]
-    pub fn delete_rule(&mut self, group_name: &str, index: usize) -> anyhow::Result<()> {
+    pub fn delete_rule(&mut self, group_name: &str, rule_ref: &RuleRef) -> anyhow::Result<()> {
         let group = self
             .groups
             .get_mut(group_name)
             .ok_or_else(|| anyhow!("group {} not found", group_name))?;
-        if index >= group.list.len() {
-            bail!("index {} out of range", index);
-        }
-        group.list.remove(index);
+
+        match rule_ref {
+            RuleRef::Index(index) => {
+                if *index >= group.list.len() {
+                    bail!("index {} out of range", index);
+                }
+                group.list.remove(*index);
+            }
+            RuleRef::Tag(tag) => {
+                let mut list = vec![];
+                for rule in &group.list {
+                    if !tag.matches(&rule.tags) {
+                        list.push(rule.clone());
+                    }
+                }
+                group.list = list;
+            }
+        };
         self.save();
         Ok(())
-    }
-
-    // function to list all rules for a given group
-    #[instrument(skip(self))]
-    pub fn list_rules(&self, group_name: &str) -> anyhow::Result<Vec<String>> {
-        let group = self
-            .groups
-            .get(group_name)
-            .ok_or_else(|| anyhow::anyhow!("group {} not found", group_name))?;
-        Ok(group.list.iter().map(|r| r.to_string()).collect())
     }
 
     // function to react on visitor by checking all rules for a given group

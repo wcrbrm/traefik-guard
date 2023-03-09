@@ -193,6 +193,8 @@ pub struct Rule {
     pub target: Vec<Target>,
     #[serde(flatten)]
     pub reaction: Reaction,
+    #[serde(flatten)]
+    pub tags: Vec<String>,
 }
 
 impl Rule {
@@ -206,12 +208,20 @@ impl Rule {
     /// Examples of rules:
     /// ```
     /// 200|US,CA,/path/to/resource
+    /// 200|US,CA,/path/to/resource#blacklist,recent
     /// 301|-GB,^/path/to/resource|/not-found
     /// 403|-US
     /// ```
     pub fn parse(src: &str) -> anyhow::Result<Rule> {
-        let (input, reaction) = Reaction::extract(src)?;
-
+        let mut tags = vec![];
+        let with_tags: Vec<&str> = src.split("#").collect();
+        let remains = if with_tags.len() > 1 {
+            tags = with_tags[1].split(",").map(|s| s.to_string()).collect();
+            with_tags[0]
+        } else {
+            src
+        };
+        let (input, reaction) = Reaction::extract(remains)?;
         let mut access = vec![];
         let mut target = vec![];
         for part in input.split(",") {
@@ -232,6 +242,7 @@ impl Rule {
             access,
             target,
             reaction,
+            tags,
         })
     }
 
@@ -258,7 +269,12 @@ impl Rule {
         if let Some(redirect) = self.reaction.redirect() {
             out.push(redirect);
         }
-        out.join("|")
+        let mut out_str = out.join("|");
+        if self.tags.len() > 0 {
+            out_str.push_str("#");
+            out_str.push_str(&self.tags.join(","));
+        }
+        out_str
     }
 
     // function to validate the Rule against Visitor
@@ -440,6 +456,7 @@ pub mod tests {
             access: vec![Access::From(Source::Any)],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -447,6 +464,7 @@ pub mod tests {
             access: vec![Access::From(Source::Any)],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -454,6 +472,7 @@ pub mod tests {
             access: vec![Access::From(Source::Any)],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(403),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -461,13 +480,24 @@ pub mod tests {
             access: vec![Access::From(Source::FromCountry("US".to_owned()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(500),
+            tags: vec![],
         }),
     }
+    test_rule! {
+        error_with_tags : ("500|US#blacklist", Rule {
+            access: vec![Access::From(Source::FromCountry("US".to_owned()))],
+            target: vec![Target::Any],
+            reaction: Reaction::HttpStatus(500),
+            tags: vec!["blacklist".to_owned()],
+        }),
+    }
+
     test_rule! {
         fail_on_country : ("401|-GB", Rule {
             access: vec![Access::Excluding(Source::FromCountry("GB".to_owned()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(401),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -475,6 +505,7 @@ pub mod tests {
             access: vec![Access::From(Source::Any)],
             target: vec![Target::Path("/api/metrics".to_owned())],
             reaction: Reaction::PermanentRedirect("/metrics".to_owned()),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -482,6 +513,7 @@ pub mod tests {
             access: vec![Access::From(Source::Any)],
             target: vec![Target::Path("/api/metrics".to_owned())],
             reaction: Reaction::TemporaryRedirect("/metrics".to_owned()),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -489,6 +521,7 @@ pub mod tests {
             access: vec![Access::From(Source::FromCountry("GB".to_owned()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -496,6 +529,7 @@ pub mod tests {
             access: vec![Access::Excluding(Source::FromCountry("GB".to_owned()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -503,6 +537,7 @@ pub mod tests {
             access: vec![Access::From(Source::FromIpv4Network("192.168.0.0/8".parse().unwrap()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -510,6 +545,7 @@ pub mod tests {
             access: vec![Access::From(Source::FromIpv4("192.168.0.1".parse().unwrap()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -517,6 +553,7 @@ pub mod tests {
             access: vec![Access::From(Source::FromIpv6("2001:0db8:85a3:0000:0000:8a2e:0370:7334".parse().unwrap()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -524,6 +561,7 @@ pub mod tests {
             access: vec![Access::From(Source::FromCity("London".to_owned()))],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
     test_rule! {
@@ -535,6 +573,7 @@ pub mod tests {
             ],
             target: vec![Target::Any],
             reaction: Reaction::HttpStatus(200),
+            tags: vec![],
         }),
     }
 
