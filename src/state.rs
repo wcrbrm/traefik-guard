@@ -31,7 +31,7 @@ pub struct SecurityGroupService {
 // implementation of the service
 impl SecurityGroupService {
     // create a new service with single group with no rules
-    pub fn new(path: &str) -> Self {
+    pub fn _new(path: &str) -> Self {
         let mut groups = Map::new();
         groups.insert(
             "default".to_string(),
@@ -116,7 +116,11 @@ impl SecurityGroupService {
                 name: group_name.to_string(),
                 list: Vec::new(),
             });
-        group.list.push(Rule::parse(rule)?);
+        for r in rule.lines() {
+            if r.len() > 0 {
+                group.list.push(Rule::parse(r)?);
+            }
+        }
         let index = group.list.len() - 1;
         self.save();
         Ok(index)

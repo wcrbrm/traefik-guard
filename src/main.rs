@@ -1,15 +1,14 @@
 mod cli;
 mod logging;
-pub mod proto;
-pub mod state;
+mod proto;
+mod state;
 mod tags;
+mod visitor;
 
-// TODO: mod visitor: create dummy Visitor-compatible object
-// TODO: mod visitor: create based on maxmind information
-// TODO: impl of cli subcommands, tags
-// TODO: mod http handlers
+// TODO: mod http handlers to edit rules under security groups
 // TODO: mod auth to allow access to /nsg/ routes
-// TODO: Dockerfile
+// TODO: Dockerfile, push it to dockerhub
+// TODO: optimize search by introducing quick search mapping of rules with single IP address or single URL rule
 
 use anyhow::Context;
 use clap::Parser;
@@ -66,11 +65,12 @@ pub async fn main() -> anyhow::Result<()> {
             svc.delete_rule(&args.nsg, &r)?;
         }
 
-        cli::Action::Check { ip, url } => {
-            //let svc = state::SecurityGroupService::from_local_path(&args.storage_path)
-            //  .context("security group load")?;
-            info!("Check {}, {:?}", ip, url);
-            // svc.react(&args.nsg, visitor)?;
+        cli::Action::Check { ip, uri } => {
+            let svc = state::SecurityGroupService::from_local_path(&args.storage_path)
+                .context("security group load")?;
+            let ipv4 = ip.parse().unwrap();
+            let v = visitor::MmReader::new(&args.maxmind_path)?.visit(ipv4, &uri)?;
+            println!("{:?}", svc.react(&args.nsg, &v)?);
         }
     }
     Ok(())

@@ -1,10 +1,10 @@
 use anyhow::{bail, Context};
-use ipnetwork::{Ipv4Network, Ipv6Network};
+use ipnetwork::Ipv4Network;
 use serde::{Deserialize, Serialize};
 // use std::collections::BTreeMap as Map;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::Ipv4Addr;
 use tracing::*;
 
 // abstraction to wrap properties of HTTP request
@@ -12,7 +12,6 @@ pub trait Visitor {
     fn country(&self) -> Option<String>;
     fn city(&self) -> Option<String>;
     fn ip(&self) -> Ipv4Addr;
-    fn ipv6(&self) -> Ipv6Addr;
     fn uri(&self) -> String;
 }
 
@@ -22,12 +21,8 @@ pub enum Source {
     Any,
     #[serde(rename = "ip")]
     FromIpv4(Ipv4Addr),
-    #[serde(rename = "ip6")]
-    FromIpv6(Ipv6Addr),
     #[serde(rename = "net")]
     FromIpv4Network(Ipv4Network),
-    #[serde(rename = "net6")]
-    FromIpv6Network(Ipv6Network),
     #[serde(rename = "country")]
     FromCountry(String),
     #[serde(rename = "city")]
@@ -39,9 +34,7 @@ impl Source {
         match self {
             Source::Any => "*".to_string(),
             Source::FromIpv4(ip) => ip.to_string(),
-            Source::FromIpv6(ip) => ip.to_string(),
             Source::FromIpv4Network(net) => net.to_string(),
-            Source::FromIpv6Network(net) => net.to_string(),
             Source::FromCountry(country) => country.to_string(),
             Source::FromCity(city) => city.to_string(),
         }
@@ -57,10 +50,6 @@ impl Source {
             Source::FromIpv4(ip)
         } else if let Ok(net) = input.parse::<Ipv4Network>() {
             Source::FromIpv4Network(net)
-        } else if let Ok(ip) = input.parse::<Ipv6Addr>() {
-            Source::FromIpv6(ip)
-        } else if let Ok(net) = input.parse::<Ipv6Network>() {
-            Source::FromIpv6Network(net)
         } else {
             // we've filtered out empty results already
             // so the unclassified string would be treated like a city
@@ -281,14 +270,40 @@ impl Rule {
     pub fn react<V: Visitor>(&self, v: &V) -> Option<Reaction> {
         let mut out = None;
         for access in &self.access {
+            if self.target.len() > 0 {
+                let mut match_at_least_one = false;
+                // if rule is target-specific, we should check each URL, otherwise continue
+                for t in &self.target {
+                    match t {
+                        Target::Any => {
+                            match_at_least_one = true;
+                            break;
+                        }
+                        Target::Path(path) => {
+                            if v.uri() == *path {
+                                match_at_least_one = true;
+                                break;
+                            }
+                        }
+                        Target::PathPrefix(prefix) => {
+                            if v.uri().starts_with(prefix) {
+                                match_at_least_one = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if match_at_least_one {
+                    continue;
+                }
+            }
+
             match access {
                 Access::From(source) => {
                     let result = match source {
                         Source::Any => true,
                         Source::FromIpv4(ip) => v.ip() == *ip,
-                        Source::FromIpv6(ip) => v.ipv6() == *ip,
                         Source::FromIpv4Network(net) => net.contains(v.ip()),
-                        Source::FromIpv6Network(net) => net.contains(v.ipv6()),
                         Source::FromCountry(country) => v.country() == Some(country.to_string()),
                         Source::FromCity(city) => v.city() == Some(city.to_string()),
                     };
@@ -300,9 +315,7 @@ impl Rule {
                     let result = match source {
                         Source::Any => false,
                         Source::FromIpv4(ip) => v.ip() == *ip,
-                        Source::FromIpv6(ip) => v.ipv6() == *ip,
                         Source::FromIpv4Network(net) => net.contains(v.ip()),
-                        Source::FromIpv6Network(net) => net.contains(v.ipv6()),
                         Source::FromCountry(country) => v.country() == Some(country.to_string()),
                         Source::FromCity(city) => v.city() == Some(city.to_string()),
                     };
@@ -325,15 +338,6 @@ pub struct SecurityGroup {
 }
 
 impl SecurityGroup {
-    pub fn react<V: Visitor>(&self, v: &V) -> anyhow::Result<Option<Reaction>> {
-        for rule in &self.list {
-            if let Some(reaction) = rule.react(v) {
-                return Ok(Some(reaction));
-            }
-        }
-        Ok(None)
-    }
-
     // writes security group to the writer, using rule writer, one rule at a line
     pub fn to_writer<W: Write>(&self, w: &mut W) -> anyhow::Result<()> {
         for rule in &self.list {
@@ -384,58 +388,6 @@ pub mod tests {
     use super::*;
     use std::io::BufWriter;
     // mock visitor
-    pub struct MockVisitor {
-        ip: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        country: Option<String>,
-        city: Option<String>,
-        uri: String,
-    }
-
-    impl MockVisitor {
-        pub fn new() -> Self {
-            Self {
-                ip: Ipv4Addr::new(127, 0, 0, 1),
-                ipv6: Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
-                country: None,
-                city: None,
-                uri: "/".to_owned(),
-            }
-        }
-        pub fn set_ip(&mut self, ip: Ipv4Addr) {
-            self.ip = ip;
-        }
-        pub fn set_ipv6(&mut self, ipv6: Ipv6Addr) {
-            self.ipv6 = ipv6;
-        }
-        pub fn set_country(&mut self, country: Option<String>) {
-            self.country = country;
-        }
-        pub fn set_city(&mut self, city: Option<String>) {
-            self.city = city;
-        }
-        pub fn set_uri(&mut self, uri: &str) {
-            self.uri = uri.to_string();
-        }
-    }
-
-    impl Visitor for MockVisitor {
-        fn ip(&self) -> Ipv4Addr {
-            self.ip
-        }
-        fn ipv6(&self) -> Ipv6Addr {
-            self.ipv6
-        }
-        fn country(&self) -> Option<String> {
-            self.country.clone()
-        }
-        fn city(&self) -> Option<String> {
-            self.city.clone()
-        }
-        fn uri(&self) -> String {
-            self.uri.clone()
-        }
-    }
 
     // The macro we'll use to define our tests
     macro_rules! test_rule  {
@@ -548,14 +500,7 @@ pub mod tests {
             tags: vec![],
         }),
     }
-    test_rule! {
-        ipv6 : ("2001:0db8:85a3:0000:0000:8a2e:0370:7334", Rule {
-            access: vec![Access::From(Source::FromIpv6("2001:0db8:85a3:0000:0000:8a2e:0370:7334".parse().unwrap()))],
-            target: vec![Target::Any],
-            reaction: Reaction::HttpStatus(200),
-            tags: vec![],
-        }),
-    }
+
     test_rule! {
         city : ("London", Rule {
             access: vec![Access::From(Source::FromCity("London".to_owned()))],

@@ -25,16 +25,19 @@ pub enum Action {
         rule: String,
     },
     /// Check IP address
-    Check { ip: String, url: Option<String> },
+    Check { ip: String, uri: String },
 }
 
 // struct for clap CLI args
 #[derive(Debug, Parser)]
 #[clap(version = "0.1")]
 pub struct Opts {
-    /// Set storage path
+    /// Storage path, where *.rules.txt files are stored
     #[clap(long, default_value = "./data", env = "TRAEFIK_GUARD_STORAGE_PATH")]
     pub storage_path: String,
+    /// Path to MaxMind database (GeoLite2-Country.mmdb, GeoLite2-City.mmdb)
+    #[clap(long, default_value = "./", env = "TRAEFIK_GUARD_MAXMIND_PATH")]
+    pub maxmind_path: String,
     /// Name of the security group
     #[clap(long, default_value = "default")]
     pub nsg: String,
