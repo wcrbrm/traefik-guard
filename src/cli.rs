@@ -25,7 +25,22 @@ pub enum Action {
         rule: String,
     },
     /// Check IP address
-    Check { ip: String, uri: String },
+    Check {
+        ip: String,
+        uri: String,
+        /// Path to MaxMind database (GeoLite2-City.mmdb)
+        #[clap(long, default_value = "./", env = "TRAEFIK_GUARD_MAXMIND_PATH")]
+        maxmind_path: String,
+    },
+    /// Start HTTP server
+    Server {
+        /// Net listening address of HTTP server in case of "server" command
+        #[clap(long, default_value = "0.0.0.0:8000", env = "LISTEN")]
+        listen: String,
+        /// Path to MaxMind database (GeoLite2-City.mmdb)
+        #[clap(long, default_value = "./", env = "TRAEFIK_GUARD_MAXMIND_PATH")]
+        maxmind_path: String,
+    },
 }
 
 // struct for clap CLI args
@@ -35,9 +50,6 @@ pub struct Opts {
     /// Storage path, where *.rules.txt files are stored
     #[clap(long, default_value = "./data", env = "TRAEFIK_GUARD_STORAGE_PATH")]
     pub storage_path: String,
-    /// Path to MaxMind database (GeoLite2-Country.mmdb, GeoLite2-City.mmdb)
-    #[clap(long, default_value = "./", env = "TRAEFIK_GUARD_MAXMIND_PATH")]
-    pub maxmind_path: String,
     /// Name of the security group
     #[clap(long, default_value = "default")]
     pub nsg: String,

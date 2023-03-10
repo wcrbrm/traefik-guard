@@ -39,6 +39,7 @@ impl MmReader {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Visit {
     ip: Ipv4Addr,
     country: Option<String>,
