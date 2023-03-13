@@ -4,6 +4,15 @@ use maxminddb::{geoip2, Reader};
 use std::net::{IpAddr, Ipv4Addr};
 use tracing::*;
 
+fn nice_uri(uri: &str) -> String {
+    let out = uri.to_string();
+    if out.contains('?') {
+        // return everything before the ?
+        return out.split('?').next().unwrap().to_string();
+    }
+    out
+}
+
 pub struct MmReader {
     reader: Reader<Vec<u8>>,
 }
@@ -15,7 +24,7 @@ impl MmReader {
         Ok(Self { reader })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     pub fn visit(&self, ip: Ipv4Addr, uri: &str) -> anyhow::Result<Visit> {
         // convert Ipv4Addr into IpAddr
         let gc: geoip2::City = self
@@ -34,7 +43,7 @@ impl MmReader {
             ip,
             country,
             city,
-            uri: uri.to_string(),
+            uri: nice_uri(uri),
         })
     }
 }
@@ -48,12 +57,12 @@ pub struct Visit {
 }
 
 impl Visit {
-    pub fn _default() -> Self {
+    pub fn no_ip(uri: &str) -> Self {
         Self {
             ip: Ipv4Addr::new(127, 0, 0, 1),
             country: None,
             city: None,
-            uri: "/".to_owned(),
+            uri: nice_uri(uri),
         }
     }
 }

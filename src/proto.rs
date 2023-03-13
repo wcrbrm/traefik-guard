@@ -269,35 +269,41 @@ impl Rule {
     // function to validate the Rule against Visitor
     pub fn react<V: Visitor>(&self, v: &V) -> Option<Reaction> {
         let mut out = None;
-        for access in &self.access {
-            if self.target.len() > 0 {
-                let mut match_at_least_one = false;
-                // if rule is target-specific, we should check each URL, otherwise continue
-                for t in &self.target {
-                    match t {
-                        Target::Any => {
-                            match_at_least_one = true;
+
+        let mut match_target = false;
+        if self.target.len() > 0 {
+            // if rule is target-specific, we should check each URL, otherwise continue
+            for t in &self.target {
+                match t {
+                    Target::Path(path) => {
+                        if v.uri() == *path {
+                            match_target = true;
                             break;
                         }
-                        Target::Path(path) => {
-                            if v.uri() == *path {
-                                match_at_least_one = true;
-                                break;
-                            }
-                        }
-                        Target::PathPrefix(prefix) => {
-                            if v.uri().starts_with(prefix) {
-                                match_at_least_one = true;
-                                break;
-                            }
+                    }
+                    Target::PathPrefix(prefix) => {
+                        if v.uri().starts_with(prefix) {
+                            match_target = true;
+                            break;
                         }
                     }
+                    Target::Any => {
+                        match_target = true;
+                        break;
+                    }
                 }
-                if match_at_least_one {
+                if match_target {
                     continue;
                 }
             }
+        } else {
+            match_target = true; // no target rules - we have match
+        }
+        if !match_target {
+            return None;
+        }
 
+        for access in &self.access {
             match access {
                 Access::From(source) => {
                     let result = match source {

@@ -129,10 +129,10 @@ impl SecurityGroupService {
     // function to list all rules for a given group
     #[instrument(skip(self))]
     pub fn list_rules(&self, group_name: &str, tags: &TagMap) -> anyhow::Result<Vec<String>> {
-        let group = self
-            .groups
-            .get(group_name)
-            .ok_or_else(|| anyhow::anyhow!("group {} not found", group_name))?;
+        let group = match self.groups.get(group_name) {
+            Some(x) => x,
+            None => return Ok(Vec::new()), // no rules if there is no group
+        };
 
         Ok(group
             .list
@@ -208,12 +208,16 @@ impl SecurityGroupService {
     }
 
     // function to react on visitor by checking all rules for a given group
-    #[instrument(skip(self, visitor))]
-    pub fn react<V: Visitor>(&self, group_name: &str, visitor: &V) -> anyhow::Result<Reaction> {
-        let group = self
-            .groups
-            .get(group_name)
-            .ok_or_else(|| anyhow!("group {} not found", group_name))?;
+    #[instrument(skip(self), fields(result))]
+    pub fn react<V: Visitor + std::fmt::Debug>(
+        &self,
+        group_name: &str,
+        visitor: &V,
+    ) -> anyhow::Result<Reaction> {
+        let group = match self.groups.get(group_name) {
+            Some(x) => x,
+            None => return Ok(Reaction::HttpStatus(200)), // no rules if there is no group
+        };
         for rule in &group.list {
             if let Some(reaction) = rule.react(visitor) {
                 return Ok(reaction.clone());
