@@ -1,9 +1,14 @@
 use crate::endpoints;
 use anyhow::Context;
-use axum::{extract::Extension, routing::*, Router, Server};
+use axum::{
+    extract::{DefaultBodyLimit, Extension},
+    routing::*,
+    Router, Server,
+};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::limit::*;
 use tower_http::trace::*;
 use tracing::*;
 
@@ -37,11 +42,17 @@ pub async fn run(
         .route("/nsg/:nsg/rules", delete(endpoints::handle_rules_delete))
         .route("/guard/:nsg", get(endpoints::react::handle_visitor))
         .layer(cors)
+        .layer(DefaultBodyLimit::disable())
+        .layer(RequestBodyLimitLayer::new(100 * 1024 * 1024)) // reason for 429
         .layer(Extension(shared_state))
         .layer(ip_source.secure().into_extension())
         .layer(
             TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().level(Level::DEBUG))
+                .make_span_with(
+                    DefaultMakeSpan::new()
+                        .level(Level::DEBUG)
+                        .include_headers(false),
+                )
                 .on_request(DefaultOnRequest::new().level(Level::DEBUG))
                 .on_response(
                     DefaultOnResponse::new()

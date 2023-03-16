@@ -85,7 +85,11 @@ impl SecurityGroupService {
             return;
         }
         for (name, group) in &self.groups {
-            let file_name = format!("{}/{}.rules.txt", self.storage_path, name);
+            let file_name = format!(
+                "{}/{}.rules.txt",
+                self.storage_path.trim_end_matches('/'),
+                name
+            );
             match group.save_to_file(&file_name) {
                 Ok(_) => {} // info!("Saved group {} to {}", name, file_name),
                 Err(e) => warn!("Failed to save group {} to {}: {}", name, file_name, e),
@@ -106,7 +110,7 @@ impl SecurityGroupService {
     }
 
     // function to create rule for a given group, returns index of the rule
-    #[instrument(skip(self))]
+    #[instrument(skip(self, rule), fields(result))]
     pub fn create_rule(&mut self, group_name: &str, rule: &str) -> anyhow::Result<usize> {
         // get or create group
         let group = self
@@ -137,6 +141,7 @@ impl SecurityGroupService {
         Ok(group
             .list
             .iter()
+            .filter(|r| tags.matches(&r.tags))
             .map(|r| Some(r.to_string()))
             .flatten()
             .collect())
@@ -181,11 +186,13 @@ impl SecurityGroupService {
     // function to delete rule by its index for a given group
     #[instrument(skip(self))]
     pub fn delete_rule(&mut self, group_name: &str, rule_ref: &RuleRef) -> anyhow::Result<()> {
-        let group = self
-            .groups
-            .get_mut(group_name)
-            .ok_or_else(|| anyhow!("group {} not found", group_name))?;
-
+        let group = match self.groups.get_mut(group_name) {
+            Some(x) => x,
+            None => {
+                warn!("group is not set yet, nothing to delete");
+                return Ok(());
+            }
+        };
         match rule_ref {
             RuleRef::Index(index) => {
                 if *index >= group.list.len() {

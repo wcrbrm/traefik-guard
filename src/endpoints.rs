@@ -61,6 +61,7 @@ pub async fn handle_rules_list(
     match state.svc.list_rules(&nsg, &tm) {
         Ok(out) => {
             if out.len() > 0 {
+                // TODO: reformat into a stream somehow
                 format!("{}\n", out.join("\n")).into_response()
             } else {
                 "*\n".into_response()

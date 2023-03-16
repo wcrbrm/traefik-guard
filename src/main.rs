@@ -7,6 +7,11 @@ mod tags;
 mod visitor;
 
 // TODO: optimize search by introducing quick search mapping of rules with single IP address or single URL rule
+// NSG: client IP detection
+// NSG: actually check secret token to use it. Token could be in query param request too
+// NSG: option to use map to speed up
+// NSG list: use stream instead of string allocation (axum_stream_rs)
+
 use anyhow::Context;
 use clap::Parser;
 use state::*;
@@ -19,6 +24,7 @@ pub async fn main() -> anyhow::Result<()> {
     logging::start();
 
     let args = cli::Opts::parse();
+    debug!("{args:?}");
     match args.action {
         cli::Action::Add { rule } => {
             info!("Add {}", rule);
