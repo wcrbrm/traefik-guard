@@ -1,7 +1,8 @@
 use super::*;
+use crate::endpoints::client_ip::ClientIp;
 use crate::proto::Reaction;
 use axum::http::header::{HeaderMap, HeaderValue};
-use axum_client_ip::{InsecureClientIp, SecureClientIp};
+use std::net::{IpAddr, Ipv4Addr};
 
 fn get_traefik_auth_root(headers: &HeaderMap) -> Option<String> {
     let host = headers
@@ -38,13 +39,12 @@ responses(
     (status = 200, description = "validate the visitor geography and put the reaction as headers", content_type = "text/plain"),
 ),
 )]
-#[instrument(skip(state, headers), level = "info")]
+#[instrument(skip(state, headers), level = "debug")]
 pub async fn handle_visitor(
     Path(nsg): Path<String>,
     Extension(state): Extension<Arc<Mutex<AppState>>>,
+    ClientIp(ip): ClientIp,
     headers: HeaderMap,
-    insecure_ip: InsecureClientIp,
-    secure_ip: SecureClientIp,
 ) -> impl IntoResponse {
     let default_uri = HeaderValue::from_static("/");
     let uri = headers
@@ -53,33 +53,33 @@ pub async fn handle_visitor(
         .to_str()
         .unwrap_or("/");
     let mut builder = Response::builder().header("x-uri", uri);
-    let ip: Ipv4Addr = match real_ip(insecure_ip, secure_ip) {
-        Some(ip) => {
-            let hv_ip = HeaderValue::from_str(&ip.to_string()).unwrap();
-            builder = builder.header("x-real-ip", hv_ip);
-            ip
+    let ipv4: Ipv4Addr = match ip {
+        IpAddr::V4(ip4) => {
+            if ip4.is_loopback() || ip4.is_private() || ip4.is_link_local() || ip4.is_unspecified()
+            {
+                builder = builder.header("x-local-ip", "1");
+            } else {
+                builder = builder.header("x-real-ip", ip.to_string());
+            }
+            ip4
         }
-        None => {
-            builder = builder.header("x-local-ip", "1");
+        _ => {
+            builder = builder.header("x-ipv6", "1");
             Ipv4Addr::new(127, 0, 0, 1)
         }
     };
 
     let state = state.lock().unwrap();
-    let mm_reader = match crate::visitor::MmReader::new(&state.maxmind_path) {
-        Ok(x) => x,
-        Err(e) => {
-            warn!("maxmind error {}", e);
-            return builder
-                .header("x-maxmind-error", "1")
-                .status(200)
-                .body(Full::from(""))
-                .unwrap()
-                .into_response();
-        }
+    let Some(mm_reader) = state.mm() else {
+        return builder
+            .header("x-maxmind-error", "1")
+            .status(200)
+            .body(Full::from(""))
+            .unwrap()
+            .into_response();
     };
 
-    let visitor = match mm_reader.visit(ip, uri) {
+    let visitor = match mm_reader.visit(ipv4, uri) {
         Ok(v) => v,
         Err(_) => crate::visitor::Visit::no_ip(uri),
     };

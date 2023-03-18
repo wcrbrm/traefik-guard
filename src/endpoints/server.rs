@@ -20,7 +20,6 @@ pub async fn run(
     _secret_token: &str,
     maxmind_path: &str,
     storage_path: &str,
-    ip_source: crate::cli::ClientIpSource,
 ) -> anyhow::Result<()> {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -45,7 +44,6 @@ pub async fn run(
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(100 * 1024 * 1024)) // reason for 429
         .layer(Extension(shared_state))
-        .layer(ip_source.secure().into_extension())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(

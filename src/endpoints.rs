@@ -1,4 +1,5 @@
 pub(crate) mod axum_helpers;
+pub(crate) mod client_ip;
 pub(crate) mod metrics;
 pub(crate) mod openapi;
 pub(crate) mod react;
@@ -9,12 +10,12 @@ pub(crate) mod server;
 
 use crate::proto::Visitor;
 use crate::tags::TagMap;
+use crate::visitor::MmReader;
 use axum::body::Full;
 use axum::extract::*;
 use axum::response::*;
 use axum_helpers::*;
 use serde::Deserialize;
-use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 use tracing::*;
 use utoipa::IntoParams;
@@ -22,6 +23,18 @@ use utoipa::IntoParams;
 pub struct AppState {
     pub svc: crate::state::SecurityGroupService,
     pub maxmind_path: String,
+}
+
+impl AppState {
+    pub fn mm(&self) -> Option<MmReader> {
+        match MmReader::new(&self.maxmind_path) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                warn!("maxmind reader: {}", e);
+                None
+            }
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, IntoParams)]

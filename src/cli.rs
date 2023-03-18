@@ -1,35 +1,9 @@
-use axum_client_ip::SecureClientIpSource;
 use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Clone, PartialEq, ValueEnum)]
 pub enum RuleRefType {
     Index,
     Tag,
-}
-
-#[derive(Debug, Clone, PartialEq, ValueEnum)]
-pub enum ClientIpSource {
-    ConnectInfo,
-    RightmostForwarded,
-    RightmostXForwardedFor,
-    XRealIp,
-    FlyClientIp,
-    TrueClientIp,
-    CfConnectingIp,
-}
-
-impl ClientIpSource {
-    pub fn secure(&self) -> SecureClientIpSource {
-        match self {
-            Self::ConnectInfo => SecureClientIpSource::ConnectInfo,
-            Self::RightmostForwarded => SecureClientIpSource::RightmostForwarded,
-            Self::RightmostXForwardedFor => SecureClientIpSource::RightmostXForwardedFor,
-            Self::XRealIp => SecureClientIpSource::XRealIp,
-            Self::FlyClientIp => SecureClientIpSource::FlyClientIp,
-            Self::TrueClientIp => SecureClientIpSource::TrueClientIp,
-            Self::CfConnectingIp => SecureClientIpSource::CfConnectingIp,
-        }
-    }
 }
 
 // struct for clap subcommands
@@ -69,9 +43,6 @@ pub enum Action {
         /// Secret token to
         #[clap(long, default_value = "", env = "TRAEFIK_GUARD_SECRET_TOKEN")]
         secret_token: String,
-        /// Client IP
-        #[clap(long, default_value = "connect-info", env = "TRAEFIK_GUARD_IP_SOURCE")]
-        ip_source: ClientIpSource,
     },
 }
 

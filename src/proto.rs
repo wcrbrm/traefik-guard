@@ -276,7 +276,7 @@ impl Rule {
             for t in &self.target {
                 match t {
                     Target::Path(path) => {
-                        if v.uri() == *path {
+                        if v.uri() == *path || v.uri() == format!("{}/", *path) {
                             match_target = true;
                             break;
                         }

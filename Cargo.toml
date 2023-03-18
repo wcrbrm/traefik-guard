@@ -9,9 +9,9 @@ edition = "2021"
 anyhow = "1.0.69"
 atty = "0.2.14"
 axum = { version = "0.6.10", features = ["headers", "macros"] }
-axum-client-ip = "0.4.0"
 clap = { version = "4.1.6", features = ["env", "derive"] }
 color-eyre = "0.6.2"
+forwarded-header-value = "0.1.1"
 ipnetwork = "0.20.0"
 lazy_static = "1.4.0"
 maxminddb = "0.23.0"

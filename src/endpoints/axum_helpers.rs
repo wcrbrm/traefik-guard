@@ -1,6 +1,5 @@
 use axum::http::StatusCode;
 use axum::response::*;
-use std::net::Ipv4Addr;
 use tracing::*;
 use utoipa::ToSchema;
 
@@ -46,31 +45,28 @@ pub fn not_implemented() -> impl IntoResponse {
         .into_response()
 }
 
-pub fn real_ip(
-    insecure_ip: axum_client_ip::InsecureClientIp,
-    secure_ip: axum_client_ip::SecureClientIp,
-) -> Option<Ipv4Addr> {
-    let mut ipv4 = match secure_ip.0.to_string().parse::<Ipv4Addr>() {
-        Ok(x) => {
-            if x.is_loopback() || x.is_private() {
-                None
-            } else {
-                Some(x)
-            }
-        }
-        _ => None,
-    };
-    if let None = ipv4 {
-        ipv4 = match insecure_ip.0.to_string().parse::<Ipv4Addr>() {
-            Ok(x) => {
-                if x.is_loopback() || x.is_private() {
-                    None
-                } else {
-                    Some(x)
-                }
-            }
-            _ => None,
-        };
-    };
-    ipv4
-}
+// pub fn real_ip(ip: crate::endpoints::client_ip::ClientIp) -> Option<Ipv4Addr> {
+//     let mut ipv4 = match secure_ip.0.to_string().parse::<Ipv4Addr>() {
+//         Ok(x) => {
+//             if x.is_loopback() || x.is_private() {
+//                 None
+//             } else {
+//                 Some(x)
+//             }
+//         }
+//         _ => None,
+//     };
+//     if let None = ipv4 {
+//         ipv4 = match insecure_ip.0.to_string().parse::<Ipv4Addr>() {
+//             Ok(x) => {
+//                 if x.is_loopback() || x.is_private() {
+//                     None
+//                 } else {
+//                     Some(x)
+//                 }
+//             }
+//             _ => None,
+//         };
+//     };
+//     ipv4
+// }
