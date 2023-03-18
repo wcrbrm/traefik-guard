@@ -8,9 +8,9 @@ use utoipa::OpenApi;
 #[openapi(
     paths(
         management::handle_rules_list,
-        management::handle_rules_create,
+        management::handle_rules_add,
         management::handle_rules_update,
-        management::handle_rules_delete,
+        management::handle_rules_rm,
         react::handle_visitor,
     ),
     components(schemas(axum_helpers::HttpErrMessage,))

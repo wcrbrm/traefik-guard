@@ -10,7 +10,7 @@ pub(crate) mod server;
 
 use crate::proto::Visitor;
 use crate::tags::TagMap;
-use crate::visitor::MmReader;
+use crate::visitor::IntoVisitor;
 use axum::body::Full;
 use axum::extract::*;
 use axum::response::*;
@@ -20,22 +20,25 @@ use std::sync::{Arc, Mutex};
 use tracing::*;
 use utoipa::IntoParams;
 
-pub struct AppState {
+pub struct AppState<MM>
+where
+    MM: IntoVisitor,
+{
     pub svc: crate::state::SecurityGroupService,
-    pub maxmind_path: String,
+    pub mm: MM,
 }
 
-impl AppState {
-    pub fn mm(&self) -> Option<MmReader> {
-        match MmReader::new(&self.maxmind_path) {
-            Ok(r) => Some(r),
-            Err(e) => {
-                warn!("maxmind reader: {}", e);
-                None
-            }
-        }
-    }
-}
+// impl AppState {
+//     pub fn mm(&self) -> Option<MmReader> {
+//         match MmReader::new(&self.maxmind_path) {
+//             Ok(r) => Some(r),
+//             Err(e) => {
+//                 warn!("maxmind reader: {}", e);
+//                 None
+//             }
+//         }
+//     }
+// }
 
 #[derive(Clone, Deserialize, IntoParams)]
 pub struct RulesListOptions {
@@ -64,18 +67,20 @@ impl RulesListOptions {
         (status = 200, description = "retrieve rules for the security group in plain text, one rule per line", content_type = "text/plain"),
     ),
 )]
-pub async fn handle_rules_list(
+pub async fn handle_rules_list<MM>(
     Path(nsg): Path<String>,
     Query(opt): Query<RulesListOptions>,
-    Extension(state): Extension<Arc<Mutex<AppState>>>,
-) -> impl IntoResponse {
+    Extension(state): Extension<Arc<Mutex<AppState<MM>>>>,
+) -> impl IntoResponse
+where
+    MM: IntoVisitor,
+{
     let state = state.lock().unwrap();
     let tm: TagMap = opt.tags();
-    match state.svc.list_rules(&nsg, &tm) {
+    match state.svc.list_rules_as_str(&nsg, &tm) {
         Ok(out) => {
             if out.len() > 0 {
-                // TODO: reformat into a stream somehow
-                format!("{}\n", out.join("\n")).into_response()
+                out.into_response()
             } else {
                 "*\n".into_response()
             }
@@ -96,11 +101,14 @@ pub async fn handle_rules_list(
         (status = 200, description = "returns total amount of rules in the security group, plain text", content_type = "text/plain"),
     )
 )]
-pub async fn handle_rules_create(
+pub async fn handle_rules_add<MM>(
     Path(nsg): Path<String>,
-    Extension(state): Extension<Arc<Mutex<AppState>>>,
+    Extension(state): Extension<Arc<Mutex<AppState<MM>>>>,
     body: String,
-) -> impl IntoResponse {
+) -> impl IntoResponse
+where
+    MM: IntoVisitor,
+{
     let mut state = state.lock().unwrap();
     match state.svc.create_rule(&nsg, &body) {
         Ok(out) => out.to_string().into_response(),
@@ -121,12 +129,15 @@ pub async fn handle_rules_create(
         (status = 200, description = "delete rules for the security group by given tags", content_type = "text/plain"),
     ),
 )]
-pub async fn handle_rules_update(
+pub async fn handle_rules_update<MM>(
     Path(nsg): Path<String>,
     Query(opt): Query<RulesListOptions>,
-    Extension(state): Extension<Arc<Mutex<AppState>>>,
+    Extension(state): Extension<Arc<Mutex<AppState<MM>>>>,
     body: String,
-) -> impl IntoResponse {
+) -> impl IntoResponse
+where
+    MM: IntoVisitor,
+{
     let mut state = state.lock().unwrap();
     let tm: TagMap = opt.tags();
     match state
@@ -150,11 +161,14 @@ pub async fn handle_rules_update(
         (status = 200, description = "delete rules for the security group by given tags", content_type = "text/plain"),
     ),
 )]
-pub async fn handle_rules_delete(
+pub async fn handle_rules_rm<MM>(
     Path(nsg): Path<String>,
     Query(opt): Query<RulesListOptions>, // can be extended to RulesRefOptions
-    Extension(state): Extension<Arc<Mutex<AppState>>>,
-) -> impl IntoResponse {
+    Extension(state): Extension<Arc<Mutex<AppState<MM>>>>,
+) -> impl IntoResponse
+where
+    MM: IntoVisitor,
+{
     let mut state = state.lock().unwrap();
     let tm: TagMap = opt.tags();
     match state.svc.delete_rule(&nsg, &crate::state::RuleRef::Tag(tm)) {

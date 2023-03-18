@@ -13,22 +13,67 @@ fn nice_uri(uri: &str) -> String {
     out
 }
 
-pub struct MmReader {
+pub trait IntoVisitor {
+    fn visit(&self, ip: Ipv4Addr, uri: &str) -> anyhow::Result<Visit>;
+}
+
+pub struct MmKeepInMemory {
     reader: Reader<Vec<u8>>,
 }
 
-impl MmReader {
+impl MmKeepInMemory {
     pub fn new(path: &str) -> anyhow::Result<Self> {
         let db = format!("{}/GeoLite2-City.mmdb", path);
         let reader = Reader::open_readfile(db).context("open maxmind db")?;
         Ok(Self { reader })
     }
+}
 
+impl IntoVisitor for MmKeepInMemory {
     #[instrument(skip(self), level = "debug")]
-    pub fn visit(&self, ip: Ipv4Addr, uri: &str) -> anyhow::Result<Visit> {
+    fn visit(&self, ip: Ipv4Addr, uri: &str) -> anyhow::Result<Visit> {
         // convert Ipv4Addr into IpAddr
         let gc: geoip2::City = self
             .reader
+            .lookup(IpAddr::V4(ip))
+            .context("lookup ip in maxmind db")?;
+        let country: Option<String> = match gc.country {
+            Some(c) => c.iso_code.map(|x| x.to_string()),
+            None => None,
+        };
+        let city: Option<String> = match gc.city {
+            Some(c) => c.names.and_then(|x| x.get("en").map(|x| x.to_string())),
+            None => None,
+        };
+        Ok(Visit {
+            ip,
+            country,
+            city,
+            uri: nice_uri(uri),
+        })
+    }
+}
+
+pub struct MmFromDiskReader {
+    path: String,
+}
+
+impl MmFromDiskReader {
+    pub fn new(path: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            path: path.to_string(),
+        })
+    }
+}
+
+impl IntoVisitor for MmFromDiskReader {
+    #[instrument(skip(self), level = "debug")]
+    fn visit(&self, ip: Ipv4Addr, uri: &str) -> anyhow::Result<Visit> {
+        let db = format!("{}/GeoLite2-City.mmdb", self.path);
+        let reader = Reader::open_readfile(db).context("open maxmind db")?;
+
+        // convert Ipv4Addr into IpAddr
+        let gc: geoip2::City = reader
             .lookup(IpAddr::V4(ip))
             .context("lookup ip in maxmind db")?;
         let country: Option<String> = match gc.country {

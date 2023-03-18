@@ -1,7 +1,7 @@
 use anyhow::{bail, Context};
 use ipnetwork::Ipv4Network;
 use serde::{Deserialize, Serialize};
-// use std::collections::BTreeMap as Map;
+use std::collections::BTreeMap as Map;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::Ipv4Addr;
@@ -187,6 +187,54 @@ pub struct Rule {
 }
 
 impl Rule {
+    // function to check if the rule has any access conditions
+    // it is typical for redirects not to have any access conditions
+    fn has_access_conditions(&self) -> bool {
+        if self.access.len() == 0 || self.access.len() == 1 {
+            if let Access::From(Source::Any) = self.access[0] {
+                return false;
+            }
+        }
+        true
+    }
+
+    // function to check if the rule has any target conditions
+    // it is typical for IP-based rules not to have any target URL conditions
+    fn has_target_conditions(&self) -> bool {
+        if self.target.len() == 0 || self.target.len() == 1 {
+            if let Target::Any = self.target[0] {
+                return false;
+            }
+        }
+        true
+    }
+
+    // returns the list of index keys for the rule
+    fn index_keys(&self) -> Vec<String> {
+        let mut v = vec![];
+        if !self.has_access_conditions() {
+            for t in &self.target {
+                if let Target::Path(x) = t {
+                    if let Some(last_char) = x.chars().last() {
+                        if last_char != '/' {
+                            v.push(format!("{}/", x));
+                        }
+                    }
+                    v.push(x.to_string());
+                }
+            }
+        } else if !self.has_target_conditions() {
+            for a in &self.access {
+                if let Access::From(Source::FromIpv4(ip)) = a {
+                    v.push(ip.to_string());
+                } else if let Access::From(Source::FromCountry(country)) = a {
+                    v.push(country.to_string());
+                }
+            }
+        }
+        v
+    }
+
     /// function to parse the rule from one line string
     /// rule consists of optional reaction, separated by |, access list and target list
     /// to match the rule, any of the source in the access list should be matched
@@ -242,10 +290,12 @@ impl Rule {
             out.push(self.reaction.code().to_string());
         };
         let mut parts = Vec::<String>::new();
-        for access in &self.access {
-            let a = access.to_string();
-            if a.len() > 0 {
-                parts.push(a);
+        if self.has_access_conditions() {
+            for access in &self.access {
+                let a = access.to_string();
+                if a.len() > 0 {
+                    parts.push(a);
+                }
             }
         }
         for target in &self.target {
@@ -254,7 +304,9 @@ impl Rule {
                 parts.push(t);
             }
         }
+        // if parts.len() > 0 {
         out.push(parts.join(","));
+        // }
         if let Some(redirect) = self.reaction.redirect() {
             out.push(redirect);
         }
@@ -263,6 +315,11 @@ impl Rule {
             out_str.push_str("#");
             out_str.push_str(&self.tags.join(","));
         }
+        // let index_keys = self.index_keys();
+        // if index_keys.len() > 0 {
+        //     out_str.push_str("---");
+        //     out_str.push_str(&index_keys.join(","));
+        // }
         out_str
     }
 
@@ -335,18 +392,153 @@ impl Rule {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SecurityGroup {
     // alphanumeric name
     pub name: String,
-    // list of rules that apply to this rule
-    pub list: Vec<Rule>,
+    // map of quick rule reqction
+    pub map_indexed: Map<String, Reaction>,
+    // list of the rules that could be searched
+    list_indexed: Vec<Rule>,
+    // list of rules that
+    list_non_indexed: Vec<Rule>,
+}
+
+impl std::fmt::Debug for SecurityGroup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // return list of group keys:
+        let mut out = f.debug_struct("SecurityGroup");
+        out.field("name", &self.name);
+        out.field("map_indexed", &self.map_indexed.len());
+        out.field("list_indexed", &self.list_indexed.len());
+        out.field("list_non_indexed", &self.list_non_indexed.len());
+        out.finish()
+    }
+}
+
+// contructor implementation
+impl SecurityGroup {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            list_indexed: vec![],
+            list_non_indexed: vec![],
+            map_indexed: Map::new(),
+        }
+    }
+}
+
+// management implementation
+impl SecurityGroup {
+    pub fn count(&self) -> usize {
+        self.list_indexed.len() + self.list_non_indexed.len()
+    }
+
+    pub fn list_indexed(&self) -> impl Iterator<Item = &Rule> {
+        self.list_indexed.iter()
+    }
+
+    pub fn list_non_indexed(&self) -> impl Iterator<Item = &Rule> {
+        self.list_non_indexed.iter()
+    }
+
+    pub fn add(&mut self, r: Rule) {
+        let keys = r.index_keys();
+        if keys.len() > 0 {
+            for key in keys {
+                self.map_indexed.insert(key, r.reaction.clone());
+            }
+            self.list_indexed.push(r);
+        } else {
+            self.list_non_indexed.push(r);
+        }
+    }
+
+    pub fn remove_by_index(&mut self, index: usize) {
+        if index < self.list_indexed.len() {
+            self.remove_many(vec![index].into_iter())
+        } else {
+            let real_index = index - self.list_indexed.len();
+            self.list_non_indexed.remove(real_index);
+        }
+    }
+
+    pub fn remove_many(&mut self, indexes: impl Iterator<Item = usize>) {
+        // remove the items from the map
+
+        let mut idx_indexed: Vec<usize> = vec![];
+        let mut idx_non_indexed: Vec<usize> = vec![];
+        for index in indexes {
+            if index < self.list_indexed.len() {
+                if let Some(rule) = self.list_indexed.get(index) {
+                    for key in rule.index_keys() {
+                        self.map_indexed.remove(&key);
+                    }
+                    idx_indexed.push(index);
+                }
+            } else {
+                idx_non_indexed.push(index - self.list_indexed.len());
+            }
+        }
+        // replace list_indexed with the new list, skipping indexes
+        if idx_indexed.len() > 0 {
+            let mut new_list_indexed = vec![];
+            for (index, rule) in self.list_indexed.iter().enumerate() {
+                let mut skip = false;
+                for i in &idx_indexed {
+                    if *i == index {
+                        skip = true;
+                        break;
+                    }
+                }
+                if !skip {
+                    new_list_indexed.push(rule.clone());
+                }
+            }
+            self.list_indexed = new_list_indexed;
+        }
+        // replace list_indexed with the new list, skipping indexes
+        if idx_non_indexed.len() > 0 {
+            let mut new_list_non_indexed = vec![];
+            for (index, rule) in self.list_indexed.iter().enumerate() {
+                let mut skip = false;
+                for i in &idx_non_indexed {
+                    if *i == index {
+                        skip = true;
+                        break;
+                    }
+                }
+                if !skip {
+                    new_list_non_indexed.push(rule.clone());
+                }
+            }
+            self.list_non_indexed = new_list_non_indexed;
+        }
+    }
+
+    pub fn set_by_index(&mut self, index: usize, r: Rule) {
+        if index < self.list_indexed.len() {
+            self.remove_many(vec![index].into_iter())
+        } else {
+            let real_index = index - self.list_indexed.len();
+            self.list_non_indexed.remove(real_index);
+        }
+        self.add(r);
+    }
+
+    pub fn set_many(&mut self, indexes: impl Iterator<Item = usize>, r: Rule) {
+        self.remove_many(indexes);
+        self.add(r.clone());
+    }
 }
 
 impl SecurityGroup {
     // writes security group to the writer, using rule writer, one rule at a line
     pub fn to_writer<W: Write>(&self, w: &mut W) -> anyhow::Result<()> {
-        for rule in &self.list {
+        for rule in &self.list_indexed {
+            writeln!(w, "{}", rule.to_string())?;
+        }
+        for rule in &self.list_non_indexed {
             writeln!(w, "{}", rule.to_string())?;
         }
         Ok(())
@@ -361,10 +553,7 @@ impl SecurityGroup {
 
     // reads rules from reader, one rule per line
     pub fn from_reader<R: Read>(name: &str, r: &mut R) -> Self {
-        let mut out = Self {
-            name: name.to_string(),
-            list: vec![],
-        };
+        let mut out = Self::new(name);
         let lines = BufReader::new(r).lines();
         for next_line in lines {
             if let Ok(line) = next_line {
@@ -372,7 +561,7 @@ impl SecurityGroup {
                 // skipping empty lines and comments
                 if ln.len() > 0 && !ln.starts_with("#") {
                     match Rule::parse(ln) {
-                        Ok(rule) => out.list.push(rule),
+                        Ok(rule) => out.add(rule),
                         Err(e) => warn!("{:?}", e),
                     };
                 }
@@ -538,7 +727,7 @@ pub mod tests {
 
     #[test]
     fn test_security_group_read_write() {
-        let source = vec!["401|-JP", "403|ES", "301|127.0.0.1,/a/|/b/"].join("\n");
+        let source = vec!["403|ES", "401|-JP", "301|127.0.0.1,/a/|/b/"].join("\n");
 
         let mut r = BufReader::new(source.as_bytes());
         let sg = SecurityGroup::from_reader("default", &mut r);
@@ -547,5 +736,20 @@ pub mod tests {
         let s = String::from_utf8(writer.into_inner().unwrap()).unwrap();
 
         assert_eq!(s, format!("{}\n", source));
+    }
+
+    #[test]
+    fn test_security_group_indexes() {
+        let source = vec![
+            "200|51.138.72.171,20.198.223.70,161.156.174.216,161.156.87.230,20.113.168.212",
+            "401|*",
+        ]
+        .join("\n");
+        let mut r = BufReader::new(source.as_bytes());
+        let sg = SecurityGroup::from_reader("default", &mut r);
+        assert_eq!(sg.list_non_indexed.len(), 1);
+        assert_eq!(sg.list_indexed.len(), 1);
+        // let rule1 = sg.list_indexed.get(0).unwrap();
+        assert_eq!(sg.map_indexed.len(), 5);
     }
 }

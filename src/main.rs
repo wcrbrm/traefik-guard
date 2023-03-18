@@ -6,16 +6,14 @@ mod state;
 mod tags;
 mod visitor;
 
-// TODO: optimize search by introducing quick search mapping of rules with single IP address or single URL rule
 // NSG: actually check secret token to use it. Token could be in query param request too
-// NSG: option to use map to speed up
-// NSG list: use stream instead of string allocation (axum_stream_rs)
 
 use anyhow::Context;
 use clap::Parser;
 use state::*;
 use std::net::SocketAddr;
 use tracing::*;
+use visitor::*;
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
@@ -38,9 +36,7 @@ pub async fn main() -> anyhow::Result<()> {
                 Some(t) => tags::TagMap::from_query(&t),
                 None => tags::TagMap::new(),
             };
-            for rule in svc.list_rules(&args.nsg, &tm)? {
-                println!("{}", rule);
-            }
+            println!("{}", svc.list_rules_as_str(&args.nsg, &tm)?);
         }
         cli::Action::Update {
             ref_type,
@@ -76,7 +72,7 @@ pub async fn main() -> anyhow::Result<()> {
             let svc = state::SecurityGroupService::from_local_path(&args.storage_path)
                 .context("security group load")?;
             let ipv4 = ip.parse().unwrap();
-            let v = visitor::MmReader::new(&maxmind_path)?.visit(ipv4, &uri)?;
+            let v = MmFromDiskReader::new(&maxmind_path)?.visit(ipv4, &uri)?;
             println!("{:?}", svc.react(&args.nsg, &v)?);
         }
 

@@ -9,4 +9,4 @@ push:
 	docker push wcrbrm/traefik-guard
 
 run:
-	cargo run -- server
+	TRAEFIK_GUARD_SECRET_TOKEN=secret cargo run -- server

@@ -1,4 +1,5 @@
 use crate::endpoints;
+use crate::visitor::MmKeepInMemory as MR;
 use anyhow::Context;
 use axum::{
     extract::{DefaultBodyLimit, Extension},
@@ -30,16 +31,16 @@ pub async fn run(
         .context("security group load")?;
     let shared_state = Arc::new(Mutex::new(endpoints::AppState {
         svc,
-        maxmind_path: maxmind_path.to_string(),
+        mm: MR::new(maxmind_path)?,
     }));
     let app = Router::new()
         .route("/openapi.json", get(endpoints::openapi::handle))
         .route("/metrics", get(endpoints::metrics::handle))
-        .route("/nsg/:nsg/rules", get(endpoints::handle_rules_list))
-        .route("/nsg/:nsg/rules", post(endpoints::handle_rules_create))
-        .route("/nsg/:nsg/rules", put(endpoints::handle_rules_update))
-        .route("/nsg/:nsg/rules", delete(endpoints::handle_rules_delete))
-        .route("/guard/:nsg", get(endpoints::react::handle_visitor))
+        .route("/nsg/:nsg/rules", get(endpoints::handle_rules_list::<MR>))
+        .route("/nsg/:nsg/rules", post(endpoints::handle_rules_add::<MR>))
+        .route("/nsg/:nsg/rules", put(endpoints::handle_rules_update::<MR>))
+        .route("/nsg/:nsg/rules", delete(endpoints::handle_rules_rm::<MR>))
+        .route("/guard/:nsg", get(endpoints::react::handle_visitor::<MR>))
         .layer(cors)
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(100 * 1024 * 1024)) // reason for 429

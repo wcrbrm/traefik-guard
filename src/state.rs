@@ -22,32 +22,27 @@ pub enum RuleRef {
 }
 
 // service structure as a state with map of security groups
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SecurityGroupService {
     pub storage_path: String,
     pub groups: Map<String, SecurityGroup>,
 }
 
+impl std::fmt::Debug for SecurityGroupService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // return list of group keys:
+        let mut out = f.debug_struct("SecurityGroupService");
+        for (k, v) in &self.groups {
+            out.field(k, v);
+        }
+        out.finish()
+    }
+}
+
 // implementation of the service
 impl SecurityGroupService {
-    // create a new service with single group with no rules
-    pub fn _new(path: &str) -> Self {
-        let mut groups = Map::new();
-        groups.insert(
-            "default".to_string(),
-            SecurityGroup {
-                name: "default".to_string(),
-                list: Vec::new(),
-            },
-        );
-        Self {
-            groups,
-            storage_path: path.to_string(),
-        }
-    }
-
     // function to load all security groups from the given path, each group is stored in a separate file
-    #[instrument]
+    #[instrument(ret)]
     pub fn from_local_path(path: &str) -> anyhow::Result<Self> {
         let mut groups = Map::new();
         // for each file in the given path, add a new group from it
@@ -97,18 +92,6 @@ impl SecurityGroupService {
         }
     }
 
-    // function to reset rules for a given group
-    #[instrument(skip(self))]
-    pub fn reset_rules(&mut self, group_name: &str) -> anyhow::Result<()> {
-        let group = self
-            .groups
-            .get_mut(group_name)
-            .ok_or_else(|| anyhow!("group {} not found", group_name))?;
-        group.list = Vec::new();
-        self.save();
-        Ok(())
-    }
-
     // function to create rule for a given group, returns index of the rule
     #[instrument(skip(self, rule), fields(result))]
     pub fn create_rule(&mut self, group_name: &str, rule: &str) -> anyhow::Result<usize> {
@@ -116,35 +99,42 @@ impl SecurityGroupService {
         let group = self
             .groups
             .entry(group_name.to_string())
-            .or_insert_with(|| SecurityGroup {
-                name: group_name.to_string(),
-                list: Vec::new(),
-            });
+            .or_insert_with(|| SecurityGroup::new(group_name));
         for r in rule.lines() {
             if r.len() > 0 {
-                group.list.push(Rule::parse(r)?);
+                group.add(Rule::parse(r)?);
             }
         }
-        let index = group.list.len() - 1;
+        let index = group.count() - 1;
         self.save();
         Ok(index)
     }
 
     // function to list all rules for a given group
     #[instrument(skip(self))]
-    pub fn list_rules(&self, group_name: &str, tags: &TagMap) -> anyhow::Result<Vec<String>> {
+    pub fn list_rules_as_str(&self, group_name: &str, tags: &TagMap) -> anyhow::Result<String> {
         let group = match self.groups.get(group_name) {
             Some(x) => x,
-            None => return Ok(Vec::new()), // no rules if there is no group
+            None => return Ok("".to_string()), // no rules if there is no group
         };
 
-        Ok(group
-            .list
-            .iter()
+        let mut out = "".to_string();
+        group
+            .list_indexed()
             .filter(|r| tags.matches(&r.tags))
-            .map(|r| Some(r.to_string()))
-            .flatten()
-            .collect())
+            .for_each(|r| {
+                out.push_str(&r.to_string());
+                out.push_str("\n");
+            });
+        group
+            .list_non_indexed()
+            .filter(|r| tags.matches(&r.tags))
+            .for_each(|r| {
+                out.push_str(&r.to_string());
+                out.push_str("\n");
+            });
+
+        Ok(out)
     }
 
     // function to update rule by its index for a given group
@@ -161,21 +151,25 @@ impl SecurityGroupService {
             .ok_or_else(|| anyhow!("group {} not found", group_name))?;
         match rule_ref {
             RuleRef::Index(index) => {
-                if *index >= group.list.len() {
+                if *index >= group.count() {
                     bail!("index {} out of range", index);
                 }
-                group.list[*index] = Rule::parse(input)?;
+                group.set_by_index(*index, Rule::parse(input)?);
             }
             RuleRef::Tag(tag) => {
-                let mut found = false;
-                for rule in &mut group.list {
-                    if tag.matches(&rule.tags) {
-                        *rule = Rule::parse(input)?;
-                        found = true;
+                let mut indexes = vec![];
+                for (index, r) in group.list_indexed().enumerate() {
+                    if tag.matches(&r.tags) {
+                        indexes.push(index);
                     }
                 }
-                if !found {
-                    bail!("rule with tag {:?} not found", tag);
+                for (index, r) in group.list_non_indexed().enumerate() {
+                    if tag.matches(&r.tags) {
+                        indexes.push(index + group.list_indexed().count());
+                    }
+                }
+                if indexes.len() > 0 {
+                    group.set_many(indexes.into_iter(), Rule::parse(input)?);
                 }
             }
         }
@@ -195,19 +189,24 @@ impl SecurityGroupService {
         };
         match rule_ref {
             RuleRef::Index(index) => {
-                if *index >= group.list.len() {
+                if *index >= group.count() {
                     bail!("index {} out of range", index);
                 }
-                group.list.remove(*index);
+                group.remove_by_index(*index);
             }
             RuleRef::Tag(tag) => {
-                let mut list = vec![];
-                for rule in &group.list {
-                    if !tag.matches(&rule.tags) {
-                        list.push(rule.clone());
+                let mut indexes = vec![];
+                for (index, r) in group.list_indexed().enumerate() {
+                    if !tag.matches(&r.tags) {
+                        indexes.push(index);
                     }
                 }
-                group.list = list;
+                for (index, r) in group.list_non_indexed().enumerate() {
+                    if tag.matches(&r.tags) {
+                        indexes.push(index + group.list_indexed().count());
+                    }
+                }
+                group.remove_many(indexes.into_iter());
             }
         };
         self.save();
@@ -215,7 +214,7 @@ impl SecurityGroupService {
     }
 
     // function to react on visitor by checking all rules for a given group
-    #[instrument(skip(self), fields(result))]
+    #[instrument(skip(self), ret, level = "debug")]
     pub fn react<V: Visitor + std::fmt::Debug>(
         &self,
         group_name: &str,
@@ -225,11 +224,33 @@ impl SecurityGroupService {
             Some(x) => x,
             None => return Ok(Reaction::HttpStatus(200)), // no rules if there is no group
         };
-        for rule in &group.list {
+        let indexes = visitor_index_keys(visitor);
+        for index in indexes {
+            if let Some(reaction) = group.map_indexed.get(&index) {
+                return Ok(reaction.clone());
+            }
+        }
+        for rule in group.list_non_indexed() {
             if let Some(reaction) = rule.react(visitor) {
                 return Ok(reaction.clone());
             }
         }
+        // fallback to no reaction
         Ok(Reaction::HttpStatus(200))
     }
+}
+
+fn visitor_index_keys(visitor: &impl Visitor) -> Vec<String> {
+    let uri = visitor.uri();
+    let mut keys = vec![visitor.ip().to_string()];
+    if let Some(country) = visitor.country() {
+        keys.push(country.to_string());
+    }
+    if let Some(last_char) = uri.chars().last() {
+        if last_char != '/' {
+            keys.push(format!("{}/", uri));
+        }
+    }
+    keys.push(uri);
+    keys
 }

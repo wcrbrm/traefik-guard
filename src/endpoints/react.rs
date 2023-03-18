@@ -1,6 +1,7 @@
 use super::*;
 use crate::endpoints::client_ip::ClientIp;
 use crate::proto::Reaction;
+use crate::visitor::IntoVisitor;
 use axum::http::header::{HeaderMap, HeaderValue};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -39,13 +40,16 @@ responses(
     (status = 200, description = "validate the visitor geography and put the reaction as headers", content_type = "text/plain"),
 ),
 )]
-#[instrument(skip(state, headers), level = "debug")]
-pub async fn handle_visitor(
+#[instrument(skip(state, headers), level = "trace")]
+pub async fn handle_visitor<MM>(
     Path(nsg): Path<String>,
-    Extension(state): Extension<Arc<Mutex<AppState>>>,
+    Extension(state): Extension<Arc<Mutex<AppState<MM>>>>,
     ClientIp(ip): ClientIp,
     headers: HeaderMap,
-) -> impl IntoResponse {
+) -> impl IntoResponse
+where
+    MM: IntoVisitor,
+{
     let default_uri = HeaderValue::from_static("/");
     let uri = headers
         .get("x-forwarded-uri")
@@ -70,23 +74,16 @@ pub async fn handle_visitor(
     };
 
     let state = state.lock().unwrap();
-    let Some(mm_reader) = state.mm() else {
-        return builder
-            .header("x-maxmind-error", "1")
-            .status(200)
-            .body(Full::from(""))
-            .unwrap()
-            .into_response();
-    };
-
-    let visitor = match mm_reader.visit(ipv4, uri) {
+    let visitor = match state.mm.visit(ipv4, uri) {
         Ok(v) => v,
-        Err(_) => crate::visitor::Visit::no_ip(uri),
+        Err(_) => {
+            builder = builder.header("x-maxmin-error", "1");
+            crate::visitor::Visit::no_ip(uri)
+        }
     };
 
     match state.svc.react(&nsg, &visitor) {
         Ok(reaction) => {
-            debug!("reaction {:?}", reaction);
             if let Some(country) = visitor.country() {
                 builder =
                     builder.header("x-country-code", HeaderValue::from_str(&country).unwrap());
