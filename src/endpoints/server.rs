@@ -21,6 +21,7 @@ pub async fn run(
     _secret_token: &str,
     maxmind_path: &str,
     storage_path: &str,
+    access_log_path: &str,
 ) -> anyhow::Result<()> {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -32,6 +33,7 @@ pub async fn run(
     let shared_state = Arc::new(Mutex::new(endpoints::AppState {
         svc,
         mm: MR::new(maxmind_path)?,
+        access_log: access_log_path.to_string(),
     }));
     let app = Router::new()
         .route("/openapi.json", get(endpoints::openapi::handle))
@@ -50,9 +52,9 @@ pub async fn run(
                 .make_span_with(
                     DefaultMakeSpan::new()
                         .level(Level::DEBUG)
-                        .include_headers(false),
+                        .include_headers(true),
                 )
-                .on_request(DefaultOnRequest::new().level(Level::DEBUG))
+                .on_request(DefaultOnRequest::new().level(Level::TRACE))
                 .on_response(
                     DefaultOnResponse::new()
                         .level(Level::INFO)

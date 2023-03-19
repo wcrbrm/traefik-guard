@@ -80,6 +80,7 @@ pub async fn main() -> anyhow::Result<()> {
             listen,
             maxmind_path,
             secret_token,
+            access_log_path,
         } => {
             let socket_addr: SocketAddr = listen.parse().expect("invalid network port bind");
             endpoints::server::run(
@@ -87,6 +88,7 @@ pub async fn main() -> anyhow::Result<()> {
                 &secret_token,
                 &maxmind_path,
                 &args.storage_path,
+                &access_log_path,
             )
             .await?;
         }

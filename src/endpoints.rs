@@ -26,19 +26,8 @@ where
 {
     pub svc: crate::state::SecurityGroupService,
     pub mm: MM,
+    pub access_log: String,
 }
-
-// impl AppState {
-//     pub fn mm(&self) -> Option<MmReader> {
-//         match MmReader::new(&self.maxmind_path) {
-//             Ok(r) => Some(r),
-//             Err(e) => {
-//                 warn!("maxmind reader: {}", e);
-//                 None
-//             }
-//         }
-//     }
-// }
 
 #[derive(Clone, Deserialize, IntoParams)]
 pub struct RulesListOptions {

@@ -12,8 +12,10 @@ RUN cargo build --release
 FROM alpine:latest
 EXPOSE 8000
 VOLUME /data/
+VOLUME /logs/
 ENV TRAEFIK_GUARD_MAXMIND_PATH=/app/
 ENV TRAEFIK_GUARD_STORAGE_PATH=/data/
+ENV TRAEFIK_GUARD_ACCESS_LOG_DIR=/logs/
 ENV TZ=Etc/UTC \
     APP_USER=appuser \
     RUST_BACKTRACE=1

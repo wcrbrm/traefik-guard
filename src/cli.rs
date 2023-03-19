@@ -40,9 +40,12 @@ pub enum Action {
         /// Path to MaxMind database (GeoLite2-City.mmdb)
         #[clap(long, default_value = "./", env = "TRAEFIK_GUARD_MAXMIND_PATH")]
         maxmind_path: String,
-        /// Secret token to
+        /// Secret token to manage rules via HTTP API
         #[clap(long, default_value = "", env = "TRAEFIK_GUARD_SECRET_TOKEN")]
         secret_token: String,
+        /// Path to a daily access log accumulation directory. Leave empty to disable access logging
+        #[clap(long, default_value = "", env = "TRAEFIK_GUARD_ACCESS_LOG_DIR")]
+        access_log_path: String,
     },
 }
 

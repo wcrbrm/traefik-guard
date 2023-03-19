@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0.69"
 atty = "0.2.14"
 axum = { version = "0.6.10", features = ["headers", "macros"] }
+chrono = "0.4.24"
 clap = { version = "4.1.6", features = ["env", "derive"] }
 color-eyre = "0.6.2"
 forwarded-header-value = "0.1.1"
