@@ -454,6 +454,14 @@ impl SecurityGroup {
         }
     }
 
+    /// removing all the rules
+    pub fn reset(&mut self) {
+        self.list_indexed = vec![];
+        self.list_non_indexed = vec![];
+        self.map_indexed = Map::new();
+    }
+
+    /// remove just one rule by index
     pub fn remove_by_index(&mut self, index: usize) {
         if index < self.list_indexed.len() {
             self.remove_many(vec![index].into_iter())
@@ -463,7 +471,8 @@ impl SecurityGroup {
         }
     }
 
-    pub fn remove_many(&mut self, indexes: impl Iterator<Item = usize>) {
+    #[instrument]
+    pub fn remove_many(&mut self, indexes: impl Iterator<Item = usize> + std::fmt::Debug) {
         // remove the items from the map
 
         let mut idx_indexed: Vec<usize> = vec![];
@@ -526,7 +535,7 @@ impl SecurityGroup {
         self.add(r);
     }
 
-    pub fn set_many(&mut self, indexes: impl Iterator<Item = usize>, r: Rule) {
+    pub fn set_many(&mut self, indexes: impl Iterator<Item = usize> + std::fmt::Debug, r: Rule) {
         self.remove_many(indexes);
         self.add(r.clone());
     }

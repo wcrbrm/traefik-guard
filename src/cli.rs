@@ -4,6 +4,7 @@ use clap::{Parser, ValueEnum};
 pub enum RuleRefType {
     Index,
     Tag,
+    All,
 }
 
 // struct for clap subcommands

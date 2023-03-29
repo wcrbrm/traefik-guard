@@ -8,6 +8,7 @@ pub(crate) mod server;
 // TODO: security layer, secret token to manage rules
 // TODO: differentiate 400 on the service layer somehow (for NSG-editing)
 // TODO: poison error handling
+// TOOD: skip empty lines in rules
 
 pub use crate::proto::Visitor;
 pub use crate::tags::TagMap;
@@ -27,13 +28,18 @@ where
 pub struct RulesListOptions {
     #[param(example = "blacklist")]
     tags: Option<String>,
+    #[param(example = "blacklist")]
+    tag: Option<String>,
 }
 
 impl RulesListOptions {
     pub fn tags(&self) -> TagMap {
         match &self.tags {
             Some(t) => TagMap::from_query(t),
-            None => TagMap::new(),
+            None => match &self.tag {
+                Some(t) => TagMap::from_query(t),
+                None => TagMap::new(),
+            },
         }
     }
 }
@@ -125,7 +131,7 @@ where
     let tm: TagMap = opt.tags();
     match state
         .svc
-        .update_rule(&nsg, &crate::state::RuleRef::Tag(tm), &body)
+        .update_rule(&nsg, &crate::state::RulesRef::Tag(tm), &body)
     {
         Ok(_) => "OK".into_response(),
         Err(e) => err500(&e.to_string()).into_response(),
@@ -154,7 +160,10 @@ where
 {
     let mut state = state.lock().unwrap();
     let tm: TagMap = opt.tags();
-    match state.svc.delete_rule(&nsg, &crate::state::RuleRef::Tag(tm)) {
+    match state
+        .svc
+        .delete_rule(&nsg, &crate::state::RulesRef::Tag(tm))
+    {
         Ok(_) => "OK".into_response(),
         Err(e) => err500(&e.to_string()).into_response(),
     }

@@ -16,7 +16,8 @@ service
 */
 
 #[derive(Debug, Clone)]
-pub enum RuleRef {
+pub enum RulesRef {
+    All,
     Index(usize),
     Tag(TagMap),
 }
@@ -101,8 +102,8 @@ impl SecurityGroupService {
             .entry(group_name.to_string())
             .or_insert_with(|| SecurityGroup::new(group_name));
         for r in rule.lines() {
-            if r.len() > 0 {
-                group.add(Rule::parse(r)?);
+            if r.trim().len() > 0 {
+                group.add(Rule::parse(r.trim())?);
             }
         }
         let index = group.count() - 1;
@@ -142,7 +143,7 @@ impl SecurityGroupService {
     pub fn update_rule(
         &mut self,
         group_name: &str,
-        rule_ref: &RuleRef,
+        rule_ref: &RulesRef,
         input: &str,
     ) -> anyhow::Result<()> {
         let group = self
@@ -150,13 +151,16 @@ impl SecurityGroupService {
             .get_mut(group_name)
             .ok_or_else(|| anyhow!("group {} not found", group_name))?;
         match rule_ref {
-            RuleRef::Index(index) => {
+            RulesRef::All => {
+                bail!("please use index or tag to update rule");
+            }
+            RulesRef::Index(index) => {
                 if *index >= group.count() {
                     bail!("index {} out of range", index);
                 }
                 group.set_by_index(*index, Rule::parse(input)?);
             }
-            RuleRef::Tag(tag) => {
+            RulesRef::Tag(tag) => {
                 let mut indexes = vec![];
                 for (index, r) in group.list_indexed().enumerate() {
                     if tag.matches(&r.tags) {
@@ -179,7 +183,7 @@ impl SecurityGroupService {
 
     // function to delete rule by its index for a given group
     #[instrument(skip(self))]
-    pub fn delete_rule(&mut self, group_name: &str, rule_ref: &RuleRef) -> anyhow::Result<()> {
+    pub fn delete_rule(&mut self, group_name: &str, rule_ref: &RulesRef) -> anyhow::Result<()> {
         let group = match self.groups.get_mut(group_name) {
             Some(x) => x,
             None => {
@@ -188,16 +192,19 @@ impl SecurityGroupService {
             }
         };
         match rule_ref {
-            RuleRef::Index(index) => {
+            RulesRef::All => {
+                group.reset();
+            }
+            RulesRef::Index(index) => {
                 if *index >= group.count() {
                     bail!("index {} out of range", index);
                 }
                 group.remove_by_index(*index);
             }
-            RuleRef::Tag(tag) => {
+            RulesRef::Tag(tag) => {
                 let mut indexes = vec![];
                 for (index, r) in group.list_indexed().enumerate() {
-                    if !tag.matches(&r.tags) {
+                    if tag.matches(&r.tags) {
                         indexes.push(index);
                     }
                 }
@@ -206,7 +213,9 @@ impl SecurityGroupService {
                         indexes.push(index + group.list_indexed().count());
                     }
                 }
-                group.remove_many(indexes.into_iter());
+                if indexes.len() > 0 {
+                    group.remove_many(indexes.into_iter());
+                }
             }
         };
         self.save();

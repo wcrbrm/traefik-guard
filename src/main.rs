@@ -43,9 +43,10 @@ pub async fn main() -> anyhow::Result<()> {
             reference,
             rule,
         } => {
-            let r: RuleRef = match ref_type {
-                cli::RuleRefType::Index => RuleRef::Index(reference.parse().unwrap()),
-                cli::RuleRefType::Tag => RuleRef::Tag(tags::TagMap::from_query(&reference)),
+            let r: RulesRef = match ref_type {
+                cli::RuleRefType::All => RulesRef::All,
+                cli::RuleRefType::Index => RulesRef::Index(reference.parse().unwrap()),
+                cli::RuleRefType::Tag => RulesRef::Tag(tags::TagMap::from_query(&reference)),
             };
             let mut svc = SecurityGroupService::from_local_path(&args.storage_path)
                 .context("security group load")?;
@@ -55,9 +56,10 @@ pub async fn main() -> anyhow::Result<()> {
             ref_type,
             reference,
         } => {
-            let r: RuleRef = match ref_type {
-                cli::RuleRefType::Index => RuleRef::Index(reference.parse().unwrap()),
-                cli::RuleRefType::Tag => RuleRef::Tag(tags::TagMap::from_query(&reference)),
+            let r: RulesRef = match ref_type {
+                cli::RuleRefType::All => RulesRef::All,
+                cli::RuleRefType::Index => RulesRef::Index(reference.parse().unwrap()),
+                cli::RuleRefType::Tag => RulesRef::Tag(tags::TagMap::from_query(&reference)),
             };
             let mut svc = SecurityGroupService::from_local_path(&args.storage_path)
                 .context("security group load")?;
