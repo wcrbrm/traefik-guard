@@ -1,7 +1,6 @@
-use super::axum_helpers;
+use super::prelude::*;
 use crate::endpoints as management;
 use crate::endpoints::react;
-use axum::response::*;
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -13,7 +12,7 @@ use utoipa::OpenApi;
         management::handle_rules_rm,
         react::handle_visitor,
     ),
-    components(schemas(axum_helpers::HttpErrMessage,))
+    components(schemas(HttpErrMessage,))
 )]
 pub struct ApiDoc;
 
