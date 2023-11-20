@@ -75,6 +75,7 @@ pub async fn main() -> anyhow::Result<()> {
                 .context("security group load")?;
             let ipv4 = ip.parse().unwrap();
             let v = MmFromDiskReader::new(&maxmind_path)?.visit(ipv4, &uri)?;
+            println!("{:?}", v);
             println!("{:?}", svc.react(&args.nsg, &v)?);
         }
 

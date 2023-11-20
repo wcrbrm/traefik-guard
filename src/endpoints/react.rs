@@ -151,11 +151,24 @@ where
     match state.svc.react(&nsg, &visitor) {
         Ok(reaction) => {
             if let Some(country) = visitor.country() {
-                builder =
-                    builder.header("x-country-code", HeaderValue::from_str(&country).unwrap());
+                match HeaderValue::from_str(&country) {
+                    Ok(country) => {
+                        builder = builder.header("x-country-code", country);
+                    }
+                    Err(e) => {
+                        warn!("cannot parse country code {:?} {:?}", country, e);
+                    }
+                }
             }
             if let Some(city) = visitor.city() {
-                builder = builder.header("x-city-en-name", HeaderValue::from_str(&city).unwrap());
+                match HeaderValue::from_str(&city) {
+                    Ok(city) => {
+                        builder = builder.header("x-city-en-name", city);
+                    }
+                    Err(e) => {
+                        warn!("cannot parse city name {:?} {:?}", city, e);
+                    }
+                }
             }
             builder = match reaction {
                 Reaction::PermanentRedirect(to) => {
