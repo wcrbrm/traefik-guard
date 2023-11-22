@@ -1,4 +1,5 @@
 mod cli;
+mod diacritics;
 mod endpoints;
 mod logging;
 mod proto;

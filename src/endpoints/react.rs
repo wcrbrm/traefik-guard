@@ -1,4 +1,5 @@
 use super::*;
+use crate::diacritics::*;
 use crate::endpoints::client_ip::ClientIp;
 use crate::proto::Reaction;
 use crate::visitor::IntoVisitor;
@@ -151,22 +152,31 @@ where
     match state.svc.react(&nsg, &visitor) {
         Ok(reaction) => {
             if let Some(country) = visitor.country() {
-                match HeaderValue::from_str(&country) {
-                    Ok(country) => {
-                        builder = builder.header("x-country-code", country);
-                    }
-                    Err(e) => {
-                        warn!("cannot parse country code {:?} {:?}", country, e);
+                if !country.is_ascii() {
+                    warn!("skipping non-ascii country name {:?}", country);
+                } else {
+                    match HeaderValue::from_str(&country) {
+                        Ok(country) => {
+                            builder = builder.header("x-country-code", country);
+                        }
+                        Err(e) => {
+                            warn!("cannot parse country code {:?} {:?}", country, e);
+                        }
                     }
                 }
             }
             if let Some(city) = visitor.city() {
-                match HeaderValue::from_str(&city) {
-                    Ok(city) => {
-                        builder = builder.header("x-city-en-name", city);
-                    }
-                    Err(e) => {
-                        warn!("cannot parse city name {:?} {:?}", city, e);
+                let city = remove_diacritics(&city);
+                if !city.is_ascii() {
+                    warn!("skipping non-ascii city name {:?}", city);
+                } else {
+                    match HeaderValue::from_str(&city) {
+                        Ok(city) => {
+                            builder = builder.header("x-city-en-name", city);
+                        }
+                        Err(e) => {
+                            warn!("cannot parse city name {:?} {:?}", city, e);
+                        }
                     }
                 }
             }
@@ -192,5 +202,18 @@ where
             builder.body(Full::from("")).unwrap().into_response()
         }
         Err(e) => err500(&e.to_string()).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::diacritics::remove_diacritics;
+    #[test]
+    pub fn it_converts() {
+        let input = "Dunajská Streda";
+        assert!(!input.is_ascii());
+        let out = remove_diacritics(input);
+        assert_eq!(out, "Dunajska Streda");
     }
 }
