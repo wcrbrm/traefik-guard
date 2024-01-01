@@ -144,7 +144,7 @@ where
     let visitor = match state.mm.visit(ipv4, uri) {
         Ok(v) => v,
         Err(_) => {
-            builder = builder.header("x-maxmind-error", "1");
+            builder = builder.header("x-maxmind-ipv4-error", "1");
             crate::visitor::Visit::no_ip(uri)
         }
     };

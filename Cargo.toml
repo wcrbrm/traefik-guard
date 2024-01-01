@@ -6,22 +6,22 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.69"
-atty = "0.2.14"
-axum = { version = "0.6.10", features = ["headers", "macros"] }
-chrono = "0.4.24"
-clap = { version = "4.1.6", features = ["env", "derive"] }
-color-eyre = "0.6.2"
-forwarded-header-value = "0.1.1"
-ipnetwork = "0.20.0"
-lazy_static = "1.4.0"
-maxminddb = "0.23.0"
-prometheus = "0.13.3"
-serde = { version = "1.0.152", features = ["derive"] }
-serde_json = "1.0.93"
-tokio = { version = "1.26.0", features = ["full"] }
-tower-http = { version = "0.4.0", features = ["cors", "tokio", "trace", "limit"] }
-tracing = "0.1.37"
-tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-utoipa = { version = "3.0.3", features = ["axum_extras"] }
+anyhow = "1"
+atty = "0.2"
+axum = { version = "0.6", features = ["headers", "macros"] }
+chrono = "0.4"
+clap = { version = "4.1", features = ["env", "derive"] }
+color-eyre = "0.6"
+forwarded-header-value = "0.1"
+ipnetwork = "0.20"
+lazy_static = "1.4"
+maxminddb = "0.23"
+prometheus = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.26", features = ["full"] }
+tower-http = { version = "0.4", features = ["cors", "tokio", "trace", "limit"] }
+tracing = "0.1"
+tracing-error = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+utoipa = { version = "3.0", features = ["axum_extras"] }

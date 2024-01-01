@@ -25,9 +25,11 @@ pub enum Action {
         reference: String,
         rule: String,
     },
-    /// Check IP address
+    /// Check IP address and show reaction
     Check {
+        /// IP address to be checked
         ip: String,
+        /// Visiting URI to be checked
         uri: String,
         /// Path to MaxMind database (GeoLite2-City.mmdb)
         #[clap(long, default_value = "./", env = "TRAEFIK_GUARD_MAXMIND_PATH")]
