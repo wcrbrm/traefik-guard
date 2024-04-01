@@ -1,3 +1,4 @@
 target/
 data/
 !target/release/traefik-guard
+*.key
